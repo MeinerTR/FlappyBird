@@ -29,6 +29,12 @@ BIRD_FALL_SPEED = BIRD_SIZE / 15;
 BIRD_TERMINAL_VELOCITY = BIRD_FALL_SPEED * 4;
 
 
+SCORE_FONT = "Comic Sans";
+SCORE_FONT_SIZE = 40;
+SCORE_POSITION_X = BIRD_POSITION / 2;
+SCORE_POSITION_Y = HEIGHT / 8;
+
+
 PIPE_WIDTH = BIRD_SIZE * 2;
 PIPE_VOID_SIZE = BIRD_SIZE * 5;
 
@@ -53,6 +59,7 @@ class Bird:
 
     def reset(self):
         self.score = 0;
+        self.next_pipe_seed_type = 0;
         self.altitude = BIRD_START_ALTITUDE;
         self.velocity = BIRD_FALL_SPEED;
         self.position = pg.Rect(BIRD_POSITION, self.altitude, BIRD_SIZE, BIRD_SIZE);
@@ -73,10 +80,7 @@ class Bird:
         pg.draw.rect(DISPLAY, color, self.position);
 
     def is_collided(self, pipes:list) -> bool:
-        if self.position.centery < 0 or \
-                self.position.centery > HEIGHT:
-            print("collided to edge of the screen!");
-            return True;
+        if self.position.centery < 0 or self.position.centery > HEIGHT: return True;
 
         if pipes:
             for idx in range(3 if len(pipes) > 3 else len(pipes)):
@@ -86,20 +90,20 @@ class Bird:
                     #==# if colliding vertically #==#
                     if self.position.top < pipe.top.bottom or \
                             self.position.bottom > pipe.bottom.top:
-                        if pipe.top.right + pipe.velocity > self.position.left:
-                            return True;
-                        else: #==# passed pipe successfully #==#
-                            return False;
+                        return True;
                     else: #==# if not collided vertically #==#
-                        pass;
+                        if pipe.seed_type == self.next_pipe_seed_type:
+                            self.score += 1;
+                            if self.next_pipe_seed_type == pipe.seed_type:
+                                self.next_pipe_seed_type = 0 if pipe.seed_type else 1;
                         
 
 class Pipe:
-    def __init__(self):
-        self.reset();
+    def __init__(self, seed_type:int):
+        self.reset(seed_type);
 
-    def reset(self):
-        self.seed_type = 0;
+    def reset(self, seed_type:int):
+        self.seed_type = seed_type;
         self.reached_end = False;
         self.velocity = PIPE_VELOCITY;
         self.set_random_altitude();
@@ -119,11 +123,9 @@ class Pipe:
     
     def set_random_altitude(self):
         if self.seed_type == 0:
-            seed(int.from_bytes(urandom(4)));
-            self.seed_type = 1;
-        else:
-            self.seed_type = 0;
             seed(int(time()));
+        else:
+            seed(int.from_bytes(urandom(4)));
 
         self.altitude = randint(int(PIPE_MIN_ALTITUDE), int(PIPE_MAX_ALTITUDE));
         self.top = pg.Rect(PIPE_START_POSITION, 0, PIPE_WIDTH, self.altitude);
@@ -138,6 +140,7 @@ class Pipe:
 
 class Game:
     def __init__(self):
+        pg.init();
         self.reset();
 
     def reset(self):
@@ -147,8 +150,10 @@ class Game:
         self.running = True;
         self.scene = Scene.menu;
         self.game_over = False;
+        self.score_text = pg.font.SysFont(SCORE_FONT, SCORE_FONT_SIZE);
         self.bird = Bird();
-        self.pipes = [Pipe(), ];
+        self.pipe_seed_type = 0;
+        self.pipes = [Pipe(self.pipe_seed_type),];
         self.pipes_to_remove = [];
         self.difficulty = PIPE_VELOCITY;
 
@@ -167,7 +172,12 @@ class Game:
             if self.scene == Scene.play:
                 self.pipe_cooldown -= 1;
         else:
-            self.pipes.append(Pipe());
+            if self.pipe_seed_type == 0:
+                self.pipe_seed_type = 1;
+            else:
+                self.pipe_seed_type = 0;
+            
+            self.pipes.append(Pipe(self.pipe_seed_type));
             if self.spawn_cooldown > PIPE_MIN_COOLDOWN:
                 self.spawn_cooldown -= PIPE_SPAWN_COOLDOWN_DECREASE;
             if self.spawn_cooldown < PIPE_MIN_COOLDOWN:
@@ -198,6 +208,10 @@ class Game:
         if self.scene == Scene.play:
             for pipe in self.pipes:
                 pipe.draw(Color.red, Color.blue);
+            text = self.score_text.render(f"{self.bird.score}", True, Color.white);
+            rect = text.get_rect();
+            rect.center = (SCORE_POSITION_X, SCORE_POSITION_Y);
+            DISPLAY.blit(text, rect);
         pg.display.update();
 
     def react(self):
